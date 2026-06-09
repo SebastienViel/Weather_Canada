@@ -65,7 +65,7 @@ metadata {
    name: "Weather Canada (OWM-EC)",
    namespace: "SebastienViel",
    author: "SebastienViel",
-   importUrl: "https://raw.githubusercontent.com/SebastienViel/Weather_Canada/main/Weather_Canada.groovy") {
+   importUrl: "https://raw.githubusercontent.com/SebastienViel/Weather_Canada/refs/heads/main/Weather_Canada") {
         
    capability "Refresh"
    capability "Initialize"
