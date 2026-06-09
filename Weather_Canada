@@ -20,7 +20,7 @@
  * 1.1.0 - Added tomorrowMaxTemp and tomorrowMinTemp attributes (from daily[1])
  *       - Added tomorrowForecastDate attribute
  *       - Updated namespace to SebastienViel
- *       - Updated importUrl to SebastienViel/Weather_Canada repo for HPM update support
+ *       - Updated importUrl to SebastienViel/Weather_Canada repo
  *
  * 1.0.5 - Removed EC alert RSS feed polling (Environment Canada discontinued the battleboard RSS feeds)
  *       - Removed rssFeed preference input
