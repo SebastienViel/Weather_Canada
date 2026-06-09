@@ -17,10 +17,9 @@
  *
  * Change Log
  *
- * 1.1.0 - Added tomorrowMaxTemp and tomorrowMinTemp attributes (from daily[1])
- *       - Added tomorrowForecastDate attribute
+ * 1.1.0 - Added tempTomorrow_max, tempTomorrow_min, tempTomorrow_date attributes (from daily[1])
  *       - Updated namespace to SebastienViel
- *       - Updated importUrl to SebastienViel/Weather_Canada repo
+ *       - Updated importUrl to SebastienViel/Weather_Canada repo for HPM update support
  *
  * 1.0.5 - Removed EC alert RSS feed polling (Environment Canada discontinued the battleboard RSS feeds)
  *       - Removed rssFeed preference input
@@ -95,9 +94,9 @@ metadata {
    attribute "tempToday",           "number"
    attribute "tempToday_min",       "number"
    attribute "tempToday_max",       "number"
-   attribute "tomorrowMaxTemp",     "number"   // NEW: tomorrow's forecast high
-   attribute "tomorrowMinTemp",     "number"   // NEW: tomorrow's forecast low
-   attribute "tomorrowForecastDate","string"   // NEW: calendar date the tomorrow forecast is for
+   attribute "tempTomorrow_max",    "number"
+   attribute "tempTomorrow_min",    "number"
+   attribute "tempTomorrow_date",   "string"
    attribute "dewPointToday",       "number"
    attribute "moonriseToday",       "number"
    attribute "moonsetToday",        "number"
@@ -424,37 +423,37 @@ def ow() {
         updateDataValue("tempToday_max", "$tempToday_maxPoll")
         sendEvent(name: "tempToday_max", value: tempToday_maxPoll)
 
-        // NEW: Tomorrow Max Temp (daily[1].temp.max)
+        // Temp Tomorrow Max
 
-        tomorrowMaxTempPoll = response.data.daily.temp.max[1]
+        tempTomorrow_maxPoll = response.data.daily.temp.max[1]
 
-        if(!tomorrowMaxTempPoll) {
-            tomorrowMaxTempPoll = 0
+        if(!tempTomorrow_maxPoll) {
+            tempTomorrow_maxPoll = 0
         }
-        updateDataValue("tomorrowMaxTemp", "$tomorrowMaxTempPoll")
-        sendEvent(name: "tomorrowMaxTemp", value: tomorrowMaxTempPoll)
+        updateDataValue("tempTomorrow_max", "$tempTomorrow_maxPoll")
+        sendEvent(name: "tempTomorrow_max", value: tempTomorrow_maxPoll)
 
-        // NEW: Tomorrow Min Temp (daily[1].temp.min)
+        // Temp Tomorrow Min
 
-        tomorrowMinTempPoll = response.data.daily.temp.min[1]
+        tempTomorrow_minPoll = response.data.daily.temp.min[1]
 
-        if(!tomorrowMinTempPoll) {
-            tomorrowMinTempPoll = 0
+        if(!tempTomorrow_minPoll) {
+            tempTomorrow_minPoll = 0
         }
-        updateDataValue("tomorrowMinTemp", "$tomorrowMinTempPoll")
-        sendEvent(name: "tomorrowMinTemp", value: tomorrowMinTempPoll)
+        updateDataValue("tempTomorrow_min", "$tempTomorrow_minPoll")
+        sendEvent(name: "tempTomorrow_min", value: tempTomorrow_minPoll)
 
-        // NEW: Tomorrow Forecast Date (unix timestamp → readable date)
+        // Temp Tomorrow Date
 
-        tomorrowDtPoll = response.data.daily.dt[1]
+        tempTomorrow_dtPoll = response.data.daily.dt[1]
 
-        if(tomorrowDtPoll) {
-            tomorrowForecastDate = new Date(tomorrowDtPoll * 1000L).format("yyyy-MM-dd", location.timeZone)
+        if(tempTomorrow_dtPoll) {
+            tempTomorrow_date = new Date(tempTomorrow_dtPoll * 1000L).format("yyyy-MM-dd", location.timeZone)
         } else {
-            tomorrowForecastDate = "Unavailable"
+            tempTomorrow_date = "Unavailable"
         }
-        updateDataValue("tomorrowForecastDate", tomorrowForecastDate)
-        sendEvent(name: "tomorrowForecastDate", value: tomorrowForecastDate)
+        updateDataValue("tempTomorrow_date", tempTomorrow_date)
+        sendEvent(name: "tempTomorrow_date", value: tempTomorrow_date)
 
         // Dewpoint Daily
         
