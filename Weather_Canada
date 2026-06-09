@@ -1,0 +1,472 @@
+/**
+ *  _______  ________._.
+ *  \      \ \_____  \ |
+ *  /   |   \  _(__  < |
+ * /    |    \/       \|
+ * \____|__  /______  /_
+ *        \/       \/\/
+ *          - development
+ *
+ * Name: Weather Canada (OWM3.0-EC)
+ * Version: 1.0.5
+ * Author: n3!
+ * 
+ * Description: Polls weather information from OpenWeatherMap.
+ *
+ * Features: Current Weather (EC Alert RSS feed removed - Environment Canada discontinued the battleboard RSS feeds)
+ *
+ * Change Log
+ *
+ * 1.0.5 - Removed EC alert RSS feed polling (Environment Canada discontinued the battleboard RSS feeds)
+ *       - Removed rssFeed preference input
+ *
+ * 1.0.4 - Fixed wind gust variable name typo (dewPointPoll → windGustPoll, wind_gustPoll → windGustPoll)
+ *       - Fixed snowTomorrow and snowAfterTomorrow using wrong array index [0] instead of [1] and [2]
+ *       - Merged duplicate OWM HTTP calls into one (icon now reuses data from the first call)
+ *
+ **/
+
+import groovy.transform.Field
+
+@Field static List timeOptions = [
+    
+    "Disabled",
+    "5 Minutes",
+    "10 Minutes",
+    "15 Minutes",
+    "30 Minutes",
+    "45 Minutes",
+    "1 Hour",
+]
+
+@Field static List unitOptions = [
+
+    "Celsius",
+    "Fahrenheit",
+]
+
+preferences {
+ 
+    input name: "owmAPI", type: "text",   title: "OW API Key", required: true
+    input name: "lat", type: "text",   title: "Latitude", required: true
+    input name: "lon", type: "text",   title: "Longitude", required: true
+    input name: "units", type: "enum", title: "Unit Setting", required: true, multiple: false, defaultValue: unitOptions[0], options: unitOptions
+    input name: "pollTime", type: "enum", title: "Poll Time", required: true, multiple: false, defaultValue: timeOptions[3], options: timeOptions
+    input name: "logEnable", type: "bool",   title: "Enable debug logging", defaultValue: false, required: true
+}
+
+metadata {
+      
+   definition (
+   name: "Weather Canada (OWM-EC)",
+   namespace: "n3!",
+   author: "n3! development",
+   importUrl: "https://github.com/dmike3/Hubitat/blob/master/Drivers/Weather%20OWM-EC%20Canada/weather-owm-ec-canada.groovy") {
+        
+   capability "Refresh"
+   capability "Initialize"
+   capability "Temperature Measurement"
+   capability "RelativeHumidityMeasurement"
+   capability "Pressure Measurement"
+
+   attribute "timezone", "string"
+   attribute "weather", "string"
+   attribute "feels_like", "number"
+   attribute "windSpeed", "number"
+   attribute "windDirection", "number"
+   attribute "windGust", "number"
+   attribute "visibility", "number"
+   attribute "clouds", "number"
+   attribute "country", "string"
+   attribute "sunRise", "string"
+   attribute "sunSet", "string"
+   attribute "dewPoint", "number"
+   attribute "rainToday", "number"
+   attribute "rainTomorrow", "number"
+   attribute "rainAfterTomorrow", "number"
+   attribute "snowToday", "number"
+   attribute "snowTomorrow", "number"
+   attribute "snowAfterTomorrow", "number"
+   attribute "tempToday", "number"
+   attribute "tempToday_min", "number"
+   attribute "tempToday_max", "number"
+   attribute "dewPointToday", "number"
+   attribute "moonriseToday", "number"
+   attribute "moonsetToday", "number"
+   attribute "dailySummary", "string"
+   attribute "weatherTile", "string" 
+   }
+}
+
+def initialize(){
+   
+    getWeather()
+    
+    if (pollTime == "Disabled") {
+        unschedule(getWeather)   
+    }
+    
+    if (pollTime == "5 Minutes") {
+        schedule("0 */5 * ? * *", getWeather)
+    }
+    
+    if (pollTime == "10 Minutes") {
+        schedule("0 */10 * ? * *", getWeather)
+    }
+    
+    if (pollTime == "15 Minutes") {
+        schedule("0 */15 * ? * *", getWeather)
+    }
+    
+    if (pollTime == "30 Minutes") {
+        schedule("0 */30 * ? * *", getWeather)
+    }
+    
+    if (pollTime == "45 Minutes") {
+        schedule("0 */45 * ? * *", getWeather)
+    }
+    
+    if (pollTime == "1 Hour") {
+        schedule("0 0 * ? * *", getWeather)
+    }          
+}
+
+def updated() {
+    unschedule(getWeather)   
+    initialize()
+    
+}
+
+def refresh() {
+    unschedule(getWeather)
+    initialize()
+        
+}
+
+def poll() {
+    unschedule(getWeather)
+    initialize()
+        
+}
+
+// Commands
+
+    command "poll"
+
+// Event Handlers
+
+def getWeather() {
+       
+    // State Variables
+
+    state.Version = '1.0.4'  
+    
+    // Parse Units
+
+    if(units == "Celsius") {
+        unitsParsed = "metric"
+        tempUnit = "c"
+    }
+    else {
+        unitsParsed = "imperial"
+        tempUnit = "f"
+    }
+    
+    if(logEnable) log.debug "Weather: Units are set to $unitsParsed"
+
+    // Gets SunRise and SunSet Information from Hub
+    def riseAndSet = getSunriseAndSunset()
+    updateDataValue("sunRise", "$riseAndSet.sunrise")
+    updateDataValue("sunSet", "$riseAndSet.sunset")
+    sendEvent(name: "sunRise", value: riseAndSet.sunrise)
+    sendEvent(name: "sunSet", value: riseAndSet.sunset)
+    
+    ow()    
+}
+
+// Polls OpenWeatherMap API One Call 3.0
+// FIX: Merged the two duplicate HTTP calls into one to halve API usage.
+
+def ow() {
+    
+    log.info "Weather: Polling Weather"
+    
+    httpGet([uri:"https://api.openweathermap.org/data/3.0/onecall?lat=$lat&lon=$lon&appid=$owmAPI&units=$unitsParsed"], { response ->        
+        
+        // Timezone
+        
+        timezonePoll = response.data.timezone
+        
+        if(!timezonePoll) {
+            timezonePoll = "Unavailable"
+        }
+                
+        updateDataValue("timezone", "$timezonePoll")
+        sendEvent(name: "timezone", value: timezonePoll)
+
+        // Daily Summary
+        
+        dailysummaryPoll = response.data.daily.summary[0]
+        
+        if(!dailysummaryPoll) {
+            dailysummaryPoll = 0
+        }
+        updateDataValue("dailysummary", "$dailysummaryPoll")
+        sendEvent(name: "dailysummary", value: dailysummaryPoll)
+
+        // Weather
+        
+        weatherPoll = response.data.current.weather.description
+        
+        if(!weatherPoll) {
+            weatherPoll = "Unavailable"
+        }
+            
+        updateDataValue("weather", "$weatherPoll")
+        sendEvent(name: "weather", value: weatherPoll)
+        
+        // Temperature
+                
+        tempPoll = response.data.current.temp
+        
+        if(!tempPoll) {
+            tempPoll = "Unavailable"
+        }
+        updateDataValue("temperature", "$tempPoll")
+        sendEvent(name: "temperature", value: tempPoll)
+        
+        // Feels Like
+        
+        feelsLikePoll = response.data.current.feels_like
+        
+        if(!feelsLikePoll) {
+             feelsLikePoll = 0
+        }
+        
+        updateDataValue("feels_like", "$feelsLikePoll")
+        sendEvent(name: "feels_like", value: feelsLikePoll)
+        
+        
+        // Pressure
+        
+        pressurePoll = response.data.current.pressure
+        
+        if(!pressurePoll) {
+             pressurePoll = 0   
+        }
+        
+        updateDataValue("pressure", "$pressurePoll")
+        sendEvent(name: "pressure", value: pressurePoll)
+        
+        // Humidity
+        
+        humidityPoll = response.data.current.humidity
+        
+        if(!humidityPoll) {
+             humidityPoll = 0   
+        }
+          
+        updateDataValue("humidity", "$humidityPoll")
+        sendEvent(name: "humidity", value: humidityPoll)
+        
+        // Visibility
+        
+        visibilityPoll = response.data.current.visibility
+        
+        if(!visibilityPoll) {
+             visibilityPoll = 0   
+        }
+        
+        updateDataValue("visibility", "$visibilityPoll")
+        sendEvent(name: "visibility", value: visibilityPoll)
+        
+        // Wind Speed
+        
+        windSpeedPoll = response.data.current.wind_speed
+        if(!windSpeedPoll) {
+            windSpeedPoll = 0   
+        }
+        
+        updateDataValue("windSpeed", "$windSpeedPoll")
+        sendEvent(name: "windSpeed", value: windSpeedPoll)
+        
+        // Wind Direction
+        
+        windDirectionPoll = response.data.current.wind_deg
+        
+        if(!windDirectionPoll) {
+             windDirectionPoll = 0   
+        }
+        
+        updateDataValue("windDirection", "$windDirectionPoll")
+        sendEvent(name: "windDirection", value: windDirectionPoll)
+        
+        // Clouds
+        
+        cloudsPoll = response.data.current.clouds
+        
+        if(!cloudsPoll) {
+             cloudsPoll = 0   
+        }
+        updateDataValue("clouds", "$cloudsPoll")
+        sendEvent(name: "clouds", value: cloudsPoll)
+        
+        // Dewpoint Now
+        
+        dewPointPoll = response.data.current.dew_point
+        
+        if(!dewPointPoll) {
+            dewPointPoll = 0
+        }
+        updateDataValue("dewPoint", "$dewPointPoll")
+        sendEvent(name: "dewPoint", value: dewPointPoll)
+
+        // FIX: Wind Gust — was incorrectly reusing dewPointPoll and referencing
+        //      the undefined variable wind_gustPoll. Now uses windGustPoll throughout.
+
+        windGustPoll = response.data.current.wind_gust
+        
+        if(!windGustPoll) {
+            windGustPoll = 0
+        }
+        updateDataValue("windGust", "$windGustPoll")
+        sendEvent(name: "windGust", value: windGustPoll)
+        
+        // Rain Today
+        
+        rainTodayPoll = response.data.daily.rain[0]
+        
+        if(!rainTodayPoll) {
+            rainTodayPoll = 0
+        }
+        updateDataValue("rainToday", "$rainTodayPoll")
+        sendEvent(name: "rainToday", value: rainTodayPoll)
+        
+        // Rain Tomorrow
+        
+        rainTomorrowPoll = response.data.daily.rain[1]
+        
+        if(!rainTomorrowPoll) {
+            rainTomorrowPoll = 0
+        }
+        updateDataValue("rainTomorrow", "$rainTomorrowPoll")
+        sendEvent(name: "rainTomorrow", value: rainTomorrowPoll)
+        
+        // Rain AfterTomorrow
+        
+        rainAfterTomorrowPoll = response.data.daily.rain[2]
+        
+        if(!rainAfterTomorrowPoll) {
+            rainAfterTomorrowPoll = 0
+        }
+        updateDataValue("rainAfterTomorrow", "$rainAfterTomorrowPoll")
+        sendEvent(name: "rainAfterTomorrow", value: rainAfterTomorrowPoll)
+        
+        // Snow Today
+        
+        snowTodayPoll = response.data.daily.snow[0]
+        
+        if(!snowTodayPoll) {
+            snowTodayPoll = 0
+        }
+        updateDataValue("snowToday", "$snowTodayPoll")
+        sendEvent(name: "snowToday", value: snowTodayPoll)
+        
+        // FIX: Snow Tomorrow was using index [0] instead of [1]
+
+        snowTomorrowPoll = response.data.daily.snow[1]
+        
+        if(!snowTomorrowPoll) {
+            snowTomorrowPoll = 0
+        }
+        updateDataValue("snowTomorrow", "$snowTomorrowPoll")
+        sendEvent(name: "snowTomorrow", value: snowTomorrowPoll)
+        
+        // FIX: Snow After Tomorrow was using index [0] instead of [2]
+
+        snowAfterTomorrowPoll = response.data.daily.snow[2]
+        
+        if(!snowAfterTomorrowPoll) {
+            snowAfterTomorrowPoll = 0
+        }
+        updateDataValue("snowAfterTomorrow", "$snowAfterTomorrowPoll")
+        sendEvent(name: "snowAfterTomorrow", value: snowAfterTomorrowPoll)
+        
+        // Temp Today
+        
+        tempTodayPoll = response.data.daily.temp.day[0]
+        
+        if(!tempTodayPoll) {
+            tempTodayPoll = 0
+        }
+        updateDataValue("tempToday", "$tempTodayPoll")
+        sendEvent(name: "tempToday", value: tempTodayPoll)
+        
+       // Temp Today Min
+        
+        tempToday_minPoll = response.data.daily.temp.min[0]
+        
+        if(!tempToday_minPoll) {
+            tempToday_minPoll = 0
+        }
+        updateDataValue("tempToday_min", "$tempToday_minPoll")
+        sendEvent(name: "tempToday_min", value: tempToday_minPoll)
+        
+       // Temp Today Max
+        
+        tempToday_maxPoll = response.data.daily.temp.max[0]
+        
+        if(!tempToday_maxPoll) {
+            tempToday_maxPoll = 0
+        }
+        updateDataValue("tempToday_max", "$tempToday_maxPoll")
+        sendEvent(name: "tempToday_max", value: tempToday_maxPoll)
+        
+        // Dewpoint Daily
+        
+        dewPointTodayPoll = response.data.daily.dew_point[0]
+        
+        if(!dewPointTodayPoll) {
+            dewPointTodayPoll = 0
+        }
+        updateDataValue("dewPointToday", "$dewPointTodayPoll")
+        sendEvent(name: "dewPointToday", value: dewPointTodayPoll)
+
+        // Moonrise Today
+        
+        moonriseTodayPoll = response.data.daily.moonrise[0]
+        
+        if(!moonriseTodayPoll) {
+            moonriseTodayPoll = 0
+        }
+        updateDataValue("moonriseToday", "$moonriseTodayPoll")
+        sendEvent(name: "moonriseToday", value: moonriseTodayPoll)
+
+        // Moonset Today
+        
+        moonsetTodayPoll = response.data.daily.moonset[0]
+        
+        if(!moonsetTodayPoll) {
+            moonsetTodayPoll = 0
+        }
+        updateDataValue("moonsetToday", "$moonsetTodayPoll")
+        sendEvent(name: "moonsetToday", value: moonsetTodayPoll)
+
+        // FIX: Weather icon now parsed here from the same response, eliminating
+        //      the second duplicate HTTP call to OWM.
+
+        if(logEnable) log.debug "Weather: Parsing Weather Icon"
+
+        condition_iconPoll = response.data.current.weather.icon[0].toString()
+        conditionURL = "http://openweathermap.org/img/wn/$condition_iconPoll@2x.png"
+
+        // Weather Tile - Used for Dashboard
+    
+        def tiletxt = '<div style=\"text-align:center;display:inline;font-size:0.65em;line-height=65%;margin-top:0em;margin-bottom:0em;\"><b>' + "${timezonePoll}" + '</b></div><br> ' + ""
+        tiletxt+='<div style=\"text-align:center;display:inline;font-size:1em;line-height=100%;margin-top:0em;margin-bottom:0em;\">' + "${weatherPoll}" + "<br>"  
+        tiletxt+="<img src='$conditionURL' width='50' height='50' /><br>"
+        tiletxt+="${tempPoll}" + " $tempUnit" + '<span style = \"font-size:.65em;\"> Feels like ' + "${feelsLikePoll}" + " $tempUnit" + '</span><br>'
+        tiletxt+='<div style=\"text-align:center;font-size:.65em;line-height=50%;margin-top:0em;margin-bottom:0em;\"><b>Wind Speed:</b>' + " ${windSpeedPoll}" +  ' <b>Humidity:</b>' + " ${humidityPoll} %" + ' <b>Rain Today:</b>' + " ${rainTodayPoll}" + '<br></div>'
+        sendEvent(name: "weatherTile", value: tiletxt, displayed: true)
+    })
+}
